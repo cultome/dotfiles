@@ -1,0 +1,131 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'json'
+require 'zip'
+require 'securerandom'
+require 'thor'
+require 'fileutils'
+
+class Dotfiles < Thor
+  ROOT_FOLDER = File.expand_path '~/.dotfiles'
+  CONFIG_FILE =  "#{ROOT_FOLDER}/config.json"
+  STORE_FOLDER =  "#{ROOT_FOLDER}/store"
+  GITREPO_FOLDER =  "#{ROOT_FOLDER}/repo"
+
+  desc 'init', 'Prepare folder and files'
+  def init
+    if File.exists? ROOT_FOLDER
+      puts "[-] An installation already exists"
+      exit 1
+    end
+
+    puts "[*] Installing under #{ROOT_FOLDER}"
+
+    FileUtils.mkdir_p STORE_FOLDER
+    FileUtils.mkdir_p GITREPO_FOLDER
+    File.write CONFIG_FILE, '{"settings": {}, "files": []}'
+
+    puts "[+] Done!"
+  end
+
+  desc 'config SETTING VALUE', 'Manage configuration'
+  def config(setting, value)
+    config = load_config
+
+    # supporting:
+    #  * gitrepo: repository to store configurations
+    #             git@github.com:cultome/dotfiles.git
+    #             https://github.com/cultome/dotfiles.git
+    #  * sign-comits: should sign commits?
+
+    config['settings'][setting] = value
+    update_config config
+
+    puts "[+] Done!"
+  end
+
+  desc 'add FILE', 'Add file to dotfiles control'
+  def add(file)
+    config = load_config
+    full_file_path = File.expand_path(file)
+    uuid = SecureRandom.uuid
+
+    puts "[*] Registering file under control..."
+    config['files'] << { path: full_file_path, id: uuid }
+    update_config config
+
+    puts "[*] Copying file to store..."
+    FileUtils.cp full_file_path, "#{STORE_FOLDER}/#{uuid}"
+    puts "[*] Backing up file..."
+    FileUtils.mv full_file_path, "#{full_file_path}.backup"
+    puts "[*] Replacing file..."
+    FileUtils.ln_s "#{STORE_FOLDER}/#{uuid}", full_file_path
+
+    puts "[+] Done!"
+  end
+
+  desc 'backup FOLDER', 'Zip files under control and moves them to FOLDER'
+  def backup(folder)
+    backup_file = "#{File.expand_path folder}/dotfiles_#{Time.now.strftime('%Y%m%d%H%M%S')}.zip"
+    puts "[*] Creating backup in #{backup_file}..."
+
+    Zip::File.open(backup_file, Zip::File::CREATE) do |zipfile|
+      # files
+        Dir.children(STORE_FOLDER).each do |filename|
+        zipfile.add "store/#{filename}", File.join(STORE_FOLDER, filename)
+      end
+      # config file
+      zipfile.add 'config.json', CONFIG_FILE
+    end
+
+    puts "[+] Done!"
+  end
+
+  desc 'push', 'Push files changes to git repository'
+  def push
+    config = load_config
+
+    unless config['settings'].key? 'gitrepo'
+      puts 'You need to set [gitrepo] configuration first (dotfiles config gitrepo <REPO URL>)'
+      exit 2
+    end
+
+    git_url = config['settings']['gitrepo']
+    repo_name = git_url.split('/').last.gsub('.git', '')
+    repo_path = "#{GITREPO_FOLDER}/#{repo_name}"
+
+    if File.exists? repo_path
+      puts "[*] Updating local repository..."
+      `git -C #{repo_path} reset --hard origin/main`
+      `git -C #{repo_path} pull`
+    else
+      puts "[*] Cloning repository..."
+      `git clone #{git_url} #{repo_path}`
+    end
+
+    puts "[*] Updating files..."
+    FileUtils.cp_r STORE_FOLDER, "#{repo_path}/store"
+    FileUtils.cp CONFIG_FILE, repo_path
+    puts `git -C #{repo_path} add config.json store/`
+
+    puts "[*] Commiting changes..."
+    sign_comits = config['settings'].key?('sign-comits') ? '-S' : ''
+    `git -C #{repo_path} commit -m "Update #{Time.now.strftime('%Y-%m-%d')}" #{sign_comits}`
+    `git -C #{repo_path} push`
+
+    puts "[+] Done!"
+  end
+
+  no_commands do
+    def load_config
+      JSON.parse File.read(CONFIG_FILE)
+    end
+
+    def update_config(config)
+      File.write CONFIG_FILE, config.to_json
+    end
+  end
+end
+
+Dotfiles.start ARGV

@@ -2,11 +2,11 @@
 
 source "https://rubygems.org"
 
-# Specify your gem's dependencies in dotfiles.gemspec
 gemspec
 
 gem "rake", "~> 13.0"
-
 gem "rspec", "~> 3.0"
-
 gem "rubocop", "~> 1.7"
+gem "thor", "~> 1.1"
+
+gem "rubyzip", "~> 2.3"
