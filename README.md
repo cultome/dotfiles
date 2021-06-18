@@ -6,23 +6,36 @@ TODO: Delete this and the text above, and describe your gem
 
 ## Installation
 
-Add this line to your application's Gemfile:
-
-```ruby
-gem 'dotfiles'
-```
-
-And then execute:
-
-    $ bundle install
-
-Or install it yourself as:
+Install the gem
 
     $ gem install dotfiles
 
 ## Usage
 
-TODO: Write usage instructions here
+Start by initializing the folder structure and config file using:
+
+    $ dotfiles init
+
+Then you can start adding files to control using
+
+    $ dotfiles add <path to file>
+
+`dotfiles` will do 3 things:
+
+ 1. Backup you file in the same directory and same name, just appending `.backup` postfix.
+ 2. Move you file into `dotfiles` store (defaults to `~/.dotfiles/store`) and change its name to avoid collisions.
+ 3. Create a symbolic link from the moved file to the original location
+
+ You can backup the files under `dotfiles` control by two mean: zip them o git-version them.
+
+
+    $ dotfiles backup folder/to/store/zipfile
+
+For version files in git, first is required to set the repository to use
+
+    $ dotfiles config gitrepo git@github.com:cultome/dotfiles.git # or https://github.com/cultome/dotfiles.git
+    $ dotfiles push
+
 
 ## Development
 
